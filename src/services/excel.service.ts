@@ -1,157 +1,247 @@
 import * as XLSX from 'xlsx'
+import AdmZip from 'adm-zip'
 
-// Excel serial date → YYYY-MM-DD (timezone-safe)
-// cellDates: false로 읽어 serial number 그대로 처리
+// ─── 날짜 파싱 (timezone-safe) ───────────────────────────────────────────────
 function fmtDate(val: unknown): string {
   if (!val) return ''
   if (typeof val === 'number' && val > 1) {
-    // Excel epoch: Dec 30, 1899 = 0
     const d = new Date(Date.UTC(1899, 11, 30) + Math.round(val) * 86400000)
-    const y = d.getUTCFullYear()
-    const m = String(d.getUTCMonth() + 1).padStart(2, '0')
-    const day = String(d.getUTCDate()).padStart(2, '0')
-    return `${y}-${m}-${day}`
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`
   }
   if (val instanceof Date) {
-    // fallback: cellDates: true 모드 대비 (UTC 기준)
-    const y = val.getUTCFullYear()
-    const m = String(val.getUTCMonth() + 1).padStart(2, '0')
-    const day = String(val.getUTCDate()).padStart(2, '0')
-    return `${y}-${m}-${day}`
+    return `${val.getUTCFullYear()}-${String(val.getUTCMonth()+1).padStart(2,'0')}-${String(val.getUTCDate()).padStart(2,'0')}`
   }
   return String(val).trim()
 }
 
 function fmtStr(val: unknown): string {
-  if (val == null) return ''
-  return String(val).trim()
+  return val == null ? '' : String(val).trim()
 }
 
-// ST (세르지오타키니) 제품일정 파싱
-// Sheet range: B1:AB38  → 배열 인덱스 0 = 컬럼 B
-// B=NO, C=IMAGE, D=DROP, E=season, F=STYLE NAME,
-// G=MOLD, H=LAST, I=LAUNCH, J=PRICE, K=COST, L=MOLD_CODE,
-// M=Designer, N=MD, O=소싱, P=Factory,
-// Q=1차작지(15), R=1차샘플(16), S=2차작지(17), T=2차샘플(18),
-// U=3차작지(19), V=3차샘플(20), W=CFM작지(21), X=CFM샘플(22),
-// Y=PO(23), Z=생산시화(24), AA=REMARK(25)
+// ─── 헤더 정규화 (공백·개행·특수문자 제거, 소문자) ─────────────────────────
+function norm(s: unknown): string {
+  return String(s ?? '').replace(/[\s\n\r\t※()\[\]·\-]+/g, '').toLowerCase()
+}
+
+// ─── ST 컬럼 규칙 ────────────────────────────────────────────────────────────
+// 정규화된 헤더 → 필드명. 두 번째 'mold'는 mold_code로 처리
+const ST_COL_RULES: [string[], string][] = [
+  [['no', 'no.'], 'no'],
+  [['image', '이미지'], '_img'],
+  [['drop', '드랍'], 'drop'],
+  [['season', '시즌'], 'season'],
+  [['stylename', 'style', '스타일명', '제품명'], 'style'],
+  [['mold', '금형'], '_mold'],          // 첫 번째 mold
+  [['last', '라스트'], 'last'],
+  [['launch', '출시', '런치'], 'launch'],
+  [['price', '가격', '소비자가', 'krw'], 'price'],
+  [['cost', '원가', '코스트'], 'cost'],
+  [['designer', '디자이너'], 'designer'],
+  [['md'], 'md'],
+  [['소싱', 'sourcing'], 'sourcing'],
+  [['factory', '공장', '팩토리'], 'factory'],
+  [['1차작지', '1stspec', '1차작지완료'], 'spec_1'],
+  [['1차샘플도착', '1차샘플', '1stsample'], 'arrive_1'],
+  [['2차작지', '2ndspec', '2차작지완료'], 'spec_2'],
+  [['2차샘플도착', '2차샘플', '2ndsample'], 'arrive_2'],
+  [['3차작지', '3rdspec', '3차작지완료'], 'spec_3'],
+  [['3차샘플도착', '3차샘플', '3rdsample'], 'arrive_3'],
+  [['cfm작지', 'cfm작지완료', 'cfmspec'], 'spec_cfm'],
+  [['cfm샘플도착', 'cfm샘플', 'cfmsample'], 'arrive_cfm'],
+  [['po발주', 'po', 'purchaseorder'], 'po'],
+  [['생산시화', '생산proto', 'proto'], 'proto_prod'],
+  [['remark', '비고', '개발'], 'remark_dev'],
+]
+
+// ─── DV 컬럼 규칙 ────────────────────────────────────────────────────────────
+const DV_COL_RULES: [string[], string][] = [
+  [['no', 'no.'], 'no'],
+  [['image', '이미지'], '_img'],
+  [['drop', '드랍'], 'drop'],
+  [['season', '시즌'], 'season'],
+  [['domain', '도메인'], 'domain'],
+  [['gender', '성별'], 'gender'],
+  [['color', '컬러', '칼라'], 'color'],
+  [['stylename', 'style', '스타일명', '제품명'], 'style'],
+  [['mold', '금형'], '_mold'],
+  [['last', '라스트'], 'last'],
+  [['size', '사이즈'], 'size'],
+  [['launch', '출시', '런치'], 'launch'],
+  [['price', '가격', '소비자가', 'krw'], 'price'],
+  [['cost', '원가', '코스트'], 'cost'],
+  [['designer', '디자이너'], 'designer'],
+  [['md'], 'md'],
+  [['소싱', 'sourcing'], 'sourcing'],
+  [['factory', '공장', '팩토리'], 'factory'],
+  [['디자인보고', 'designreview', '디자인리뷰'], 'design_review'],
+  [['1차작지', '1stspec', '1차작지완료'], 'spec_1'],
+  [['1차샘플의뢰', '1차의뢰', 'samplereq'], 'sample_req_1'],
+  [['시화', 'proto', 'prototype'], 'proto_1'],
+  [['일정target', 'target', '일정타겟'], '_target'],     // 1st target
+  [['1차샘플도착', '1차샘플', '1stsample'], 'arrive_1'],
+  [['샘플보고', 'samplereport', '샘플리포트'], 'report_sample'],
+  [['2차작지', '2ndspec', '2차작지완료'], 'spec_2'],
+  [['2차샘플도착', '2차샘플', '2ndsample'], 'arrive_2'],
+  [['3차작지', '3rdspec', '3차작지완료'], 'spec_3'],
+  [['3차샘플도착', '3차샘플', '3rdsample'], 'arrive_3'],
+  [['cfm작지', 'cfm작지완료', 'cfmspec'], 'spec_cfm'],
+  [['cfm샘플도착', 'cfm샘플', 'cfmsample'], 'arrive_cfm'],
+  [['po발주', 'po발주중국제외', 'po'], 'po'],
+  [['생산시화', '생산proto'], 'proto_prod'],
+  [['gbtest', 'gb테스트', 'gbtest'], 'gb_test'],
+  [['po발주중국', 'pocn', 'po중국'], 'po_cn'],
+  [['입고', 'inbound'], 'inbound'],
+  [['remark개발', '개발비고', '개발remark'], 'remark_dev'],
+  [['remark생산', '생산비고', '생산remark'], 'remark_prod'],
+]
+
+type ColRule = [string[], string]
+
+function buildIndexMap(headers: unknown[], rules: ColRule[]): Record<number, string> {
+  const map: Record<number, string> = {}
+  const usedFields = new Set<string>()
+
+  headers.forEach((h, idx) => {
+    const n = norm(h)
+    if (!n) return
+    for (const [keywords, field] of rules) {
+      if (keywords.some(k => n.includes(k))) {
+        // _mold: 첫 번째 → 'mold', 두 번째 → 'mold_code'
+        if (field === '_mold') {
+          if (!usedFields.has('mold')) { map[idx] = 'mold'; usedFields.add('mold') }
+          else { map[idx] = 'mold_code' }
+          return
+        }
+        // _target: 순서대로 target_1, target_2, target_3
+        if (field === '_target') {
+          const n = ['target_1','target_2','target_3'].find(t => !usedFields.has(t))
+          if (n) { map[idx] = n; usedFields.add(n) }
+          return
+        }
+        if (!usedFields.has(field)) {
+          map[idx] = field
+          usedFields.add(field)
+          return
+        }
+      }
+    }
+  })
+  return map
+}
+
+// ─── xlsx에서 이미지 추출 (adm-zip으로 xlsx zip 파싱) ────────────────────────
+// 반환: { [excelRowNum(1-based)]: [{mime, data}] }
+export function extractImagesFromXlsx(buffer: Buffer): Record<string, {mime: string, data: string}[]> {
+  const result: Record<string, {mime: string, data: string}[]> = {}
+  try {
+    const zip = new AdmZip(buffer)
+
+    // 1) rels: rId → 파일경로
+    const relsEntry = zip.getEntry('xl/drawings/_rels/drawing1.xml.rels')
+    if (!relsEntry) return result
+    const relsXml = relsEntry.getData().toString('utf-8')
+    const ridToFile: Record<string, string> = {}
+    const relRe = /Id="([^"]+)"[^>]+Target="([^"]+)"/g
+    let m: RegExpExecArray | null
+    while ((m = relRe.exec(relsXml)) !== null) {
+      ridToFile[m[1]] = m[2].replace('../', 'xl/')
+    }
+
+    // 2) drawing XML 파싱: <xdr:twoCellAnchor> 블록별로 row + rId 추출
+    const drawEntry = zip.getEntry('xl/drawings/drawing1.xml')
+    if (!drawEntry) return result
+    const drawXml = drawEntry.getData().toString('utf-8')
+
+    // twoCellAnchor 블록 분리
+    const anchorRe = /<xdr:twoCellAnchor[\s\S]*?<\/xdr:twoCellAnchor>/g
+    while ((m = anchorRe.exec(drawXml)) !== null) {
+      const block = m[0]
+      // from row (0-based)
+      const rowMatch = /<xdr:from>[\s\S]*?<xdr:row>(\d+)<\/xdr:row>/.exec(block)
+      if (!rowMatch) continue
+      const excelRow = parseInt(rowMatch[1]) + 1  // 1-based
+
+      // 이 블록 내 모든 r:embed
+      const embedRe = /r:embed="([^"]+)"/g
+      let em: RegExpExecArray | null
+      while ((em = embedRe.exec(block)) !== null) {
+        const rid = em[1]
+        const filePath = ridToFile[rid]
+        if (!filePath) continue
+        const mediaEntry = zip.getEntry(filePath)
+        if (!mediaEntry) continue
+        const ext = filePath.split('.').pop()?.toLowerCase() ?? 'png'
+        const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png'
+        const data = mediaEntry.getData().toString('base64')
+        if (!result[excelRow]) result[excelRow] = []
+        result[excelRow].push({ mime, data })
+      }
+    }
+  } catch (e) {
+    console.warn('이미지 추출 실패:', e)
+  }
+  return result
+}
+
+// ─── ST 파싱 ─────────────────────────────────────────────────────────────────
 export function parseStExcel(buffer: Buffer): object[] {
   const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false })
   const ws = wb.Sheets['제품일정']
   if (!ws) throw new Error('시트 "제품일정"을 찾을 수 없습니다.')
 
   const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null })
+  const headers = rows[2] as unknown[]  // row 3 (0-based index 2) = 헤더
+  const colMap = buildIndexMap(headers, ST_COL_RULES)
   const result: object[] = []
 
   for (let i = 3; i < rows.length; i++) {
     const r = rows[i] as unknown[]
-    const no = r[0]  // B
-    const style = fmtStr(r[4])  // F: STYLE NAME
-    if (no == null || no === '' || style === '') continue  // 빈 placeholder 행 제외
+    const noIdx = Object.entries(colMap).find(([,f]) => f === 'no')?.[0]
+    const styleIdx = Object.entries(colMap).find(([,f]) => f === 'style')?.[0]
+    const no = noIdx != null ? r[Number(noIdx)] : null
+    const style = styleIdx != null ? fmtStr(r[Number(styleIdx)]) : ''
+    if (no == null || no === '' || style === '') continue
 
-    result.push({
-      _sheetRow: String(i + 1),
-      no: fmtStr(no),
-      drop: fmtStr(r[2]),        // D
-      season: fmtStr(r[3]),      // E
-      style,                     // F
-      mold: fmtStr(r[5]),        // G
-      last: fmtStr(r[6]),        // H
-      launch: fmtDate(r[7]),     // I
-      price: fmtStr(r[8]),       // J
-      cost: fmtStr(r[9]),        // K
-      mold_code: fmtStr(r[10]),  // L
-      designer: fmtStr(r[11]),   // M
-      md: fmtStr(r[12]),         // N
-      sourcing: fmtStr(r[13]),   // O
-      factory: fmtStr(r[14]),    // P
-      spec_1: fmtDate(r[15]),    // Q 1차 작지
-      arrive_1: fmtDate(r[16]),  // R 1차 샘플
-      spec_2: fmtDate(r[17]),    // S 2차 작지
-      arrive_2: fmtDate(r[18]),  // T 2차 샘플
-      spec_3: fmtDate(r[19]),    // U 3차 작지
-      arrive_3: fmtDate(r[20]),  // V 3차 샘플
-      spec_cfm: fmtDate(r[21]),  // W CFM 작지
-      arrive_cfm: fmtDate(r[22]), // X CFM 샘플
-      po: fmtDate(r[23]),        // Y PO
-      proto_prod: fmtDate(r[24]), // Z 생산시화
-      remark_dev: fmtStr(r[25]), // AA REMARK
-    })
+    const row: Record<string, string> = { _sheetRow: String(i + 1) }
+    for (const [idx, field] of Object.entries(colMap)) {
+      if (field === '_img') continue
+      const val = r[Number(idx)]
+      const isDateField = ['launch','spec_1','arrive_1','spec_2','arrive_2','spec_3','arrive_3','spec_cfm','arrive_cfm','po','proto_prod'].includes(field)
+      row[field] = isDateField ? fmtDate(val) : fmtStr(val)
+    }
+    result.push(row)
   }
-
   return result
 }
 
-// DV (듀베티카) 제품일정 파싱
-// Sheet range: B1:AQ54  → 배열 인덱스 0 = 컬럼 B
-// B=NO(0), C=IMAGE(1), D=DROP(2), E=SEASON(3), F=DOMAIN(4), G=Gender(5),
-// H=COLOR(6), I=STYLE NAME(7), J=MOLD(8), K=LAST(9), L=SIZE(10),
-// M=LAUNCH(11), N=PRICE(12), O=COST(13), P=MOLD_CODE(14),
-// Q=Designer(15), R=MD(16), S=소싱(17), T=Factory(18),
-// U=디자인보고(19), V=1차작지(20), W=1차샘플의뢰(21), X=시화(22),
-// Y=TARGET1(23), Z=1차샘플도착(24), AA=샘플보고(25),
-// AB=2차작지(26), AC=TARGET2(27), AD=2차샘플(28),
-// AE=3차작지(29), AF=TARGET3(30), AG=3차샘플(31),
-// AH=CFM작지(32), AI=CFM샘플(33), AJ=PO(34), AK=생산시화(35),
-// AL=GBTEST(36), AM=PO중국(37), AN=입고(38),
-// AO=REMARK개발(39), AP=REMARK생산(40)
+// ─── DV 파싱 ─────────────────────────────────────────────────────────────────
 export function parseDvExcel(buffer: Buffer): object[] {
   const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false })
   const ws = wb.Sheets['제품일정']
   if (!ws) throw new Error('시트 "제품일정"을 찾을 수 없습니다.')
 
   const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null })
+  const headers = rows[2] as unknown[]
+  const colMap = buildIndexMap(headers, DV_COL_RULES)
   const result: object[] = []
+
+  const DATE_FIELDS = new Set(['launch','design_review','spec_1','sample_req_1','target_1','arrive_1','spec_2','target_2','arrive_2','spec_3','target_3','arrive_3','spec_cfm','arrive_cfm','po','proto_prod','po_cn','inbound'])
 
   for (let i = 3; i < rows.length; i++) {
     const r = rows[i] as unknown[]
-    const no = r[0]  // B
-    if (no == null || no === '') continue
+    const noIdx = Object.entries(colMap).find(([,f]) => f === 'no')?.[0]
+    const styleIdx = Object.entries(colMap).find(([,f]) => f === 'style')?.[0]
+    const no = noIdx != null ? r[Number(noIdx)] : null
+    const style = styleIdx != null ? fmtStr(r[Number(styleIdx)]) : ''
+    if (no == null || no === '' || style === '') continue
 
-    result.push({
-      _sheetRow: String(i + 1),
-      no: fmtStr(no),
-      drop: fmtStr(r[2]),            // D
-      season: fmtStr(r[3]),          // E
-      domain: fmtStr(r[4]),          // F
-      gender: fmtStr(r[5]),          // G
-      color: fmtStr(r[6]),           // H
-      style: fmtStr(r[7]),           // I
-      mold: fmtStr(r[8]),            // J
-      last: fmtStr(r[9]),            // K
-      size: fmtStr(r[10]),           // L
-      launch: fmtDate(r[11]),        // M
-      price: fmtStr(r[12]),          // N
-      cost: fmtStr(r[13]),           // O
-      mold_code: fmtStr(r[14]),      // P
-      designer: fmtStr(r[15]),       // Q
-      md: fmtStr(r[16]),             // R
-      sourcing: fmtStr(r[17]),       // S
-      factory: fmtStr(r[18]),        // T
-      design_review: fmtDate(r[19]), // U 디자인보고
-      spec_1: fmtDate(r[20]),        // V 1차작지
-      sample_req_1: fmtDate(r[21]),  // W 1차샘플의뢰
-      proto_1: fmtStr(r[22]),        // X 시화
-      target_1: fmtDate(r[23]),      // Y TARGET
-      arrive_1: fmtDate(r[24]),      // Z 1차샘플도착
-      report_sample: fmtStr(r[25]),  // AA 샘플보고
-      spec_2: fmtDate(r[26]),        // AB 2차작지
-      target_2: fmtDate(r[27]),      // AC TARGET
-      arrive_2: fmtDate(r[28]),      // AD 2차샘플
-      spec_3: fmtDate(r[29]),        // AE 3차작지
-      target_3: fmtDate(r[30]),      // AF TARGET
-      arrive_3: fmtDate(r[31]),      // AG 3차샘플
-      spec_cfm: fmtDate(r[32]),      // AH CFM작지
-      arrive_cfm: fmtDate(r[33]),    // AI CFM샘플
-      po: fmtDate(r[34]),            // AJ PO
-      proto_prod: fmtDate(r[35]),    // AK 생산시화
-      gb_test: fmtStr(r[36]),        // AL GB TEST
-      po_cn: fmtDate(r[37]),         // AM PO중국
-      inbound: fmtDate(r[38]),       // AN 입고
-      remark_dev: fmtStr(r[39]),     // AO REMARK개발
-      remark_prod: fmtStr(r[40]),    // AP REMARK생산
-    })
+    const row: Record<string, string> = { _sheetRow: String(i + 1) }
+    for (const [idx, field] of Object.entries(colMap)) {
+      if (field === '_img') continue
+      const val = r[Number(idx)]
+      row[field] = DATE_FIELDS.has(field) ? fmtDate(val) : fmtStr(val)
+    }
+    result.push(row)
   }
-
   return result
 }
