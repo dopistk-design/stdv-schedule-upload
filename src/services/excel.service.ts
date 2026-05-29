@@ -46,14 +46,15 @@ export function parseStExcel(buffer: Buffer): object[] {
   for (let i = 3; i < rows.length; i++) {
     const r = rows[i] as unknown[]
     const no = r[0]  // B
-    if (no == null || no === '') continue
+    const style = fmtStr(r[4])  // F: STYLE NAME
+    if (no == null || no === '' || style === '') continue  // 빈 placeholder 행 제외
 
     result.push({
       _sheetRow: String(i + 1),
       no: fmtStr(no),
       drop: fmtStr(r[2]),        // D
       season: fmtStr(r[3]),      // E
-      style: fmtStr(r[4]),       // F
+      style,                     // F
       mold: fmtStr(r[5]),        // G
       last: fmtStr(r[6]),        // H
       launch: fmtDate(r[7]),     // I
