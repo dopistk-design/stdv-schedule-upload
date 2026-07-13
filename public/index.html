@@ -486,7 +486,7 @@
             <span class="stdev-badge">예상 입고 : 27/02/26</span>
           </div>
           <div id="stWellnessTimeline" class="stdev-timeline"></div>
-          <div class="stdev-note"><b>기준</b> 작업지시서·의뢰 W1-W3를 5/16-6/5 진행, 6/5 작지서 전달 완료로 반영 · 웰니스 운동화 가상 개발·생산 리드타임 적용</div>
+          <div class="stdev-note"><b>주차 기준</b> 두 타임라인 모두 월요일~일요일 · 작업지시서·의뢰 W1-W3는 6/5 작지서 전달 완료 기준으로 반영 · 웰니스 운동화 가상 개발·생산 리드타임 적용</div>
         </div>
       </div>
     </section>
@@ -2081,7 +2081,9 @@ function buildStWellnessTimeline() {
   const wrap = document.getElementById('stWellnessTimeline');
   if (!wrap) return;
 
-  const planStart = new Date('2026-05-16T00:00:00');
+  // 상단 온코트 타임라인과 동일하게 월요일~일요일 단위로 표시한다.
+  // 6/5 작지서 전달일은 W3(6/1~6/7)에 포함된다.
+  const planStart = new Date('2026-05-18T00:00:00');
   const weekCount = 41;
   const displayStartWeek = 1;
   const displayWeekCount = weekCount - (displayStartWeek - 1);
