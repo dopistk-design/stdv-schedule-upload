@@ -469,24 +469,25 @@
 
     <section class="section">
       <h2>중간: 세르지오 타키니 운동화 개발·생산 타임라인</h2>
+      <div class="sub">캡처 샘플 일정의 1차 작지·샘플 도착일을 기준으로 후속 개발·생산 리드타임 반영</div>
       <div class="stdev-wrap">
         <div class="stdev-card">
           <div class="stdev-headline">
-            <span>세르지오타키니 2개스타일 개발,생산 스케줄</span>
-            <span class="stdev-badge" style="margin-left:auto;background:#e0f2fe;border-color:#38bdf8;color:#075985;">개발업체 : SI 무역</span>
-            <span class="stdev-badge">목표 입고일 : 27/01/24</span>
+            <span>쿠시라이트 302 · 702 개발·생산 스케줄</span>
+            <span class="stdev-badge" style="margin-left:auto;background:#eff6ff;border-color:#93c5fd;color:#1e3a8a;">1차 샘플 : 26/07/30</span>
+            <span class="stdev-badge">목표 입고일 : 27/02/12</span>
           </div>
           <div id="stDevTimeline" class="stdev-timeline"></div>
-          <div class="stdev-note"><b>기준</b> 상단 날짜는 2주차부터 표시 · 생산 18주(4개월+2주) · 전체는 43주 기준</div>
+          <div class="stdev-note"><b>기준</b> 1차 작지 26/04/30 · 1차 샘플 도착 26/07/30 · 이후 수정/컨펌 및 생산 18주 리드타임 적용</div>
         </div>
         <div class="stdev-card wellness">
           <div class="stdev-headline">
-            <span>타키니 웰니스 운동화 신규 예상 스케줄</span>
-            <span class="stdev-badge" style="margin-left:auto;background:#f0fdf4;border-color:#86efac;color:#166534;">작지서 전달 : 26/06/05</span>
-            <span class="stdev-badge">예상 입고 : 27/02/26</span>
+            <span>클라시코 메리제인 · 로우 스니커즈 개발·생산 스케줄</span>
+            <span class="stdev-badge" style="margin-left:auto;background:#f0fdf4;border-color:#86efac;color:#166534;">1차 작지 : 26/06/02</span>
+            <span class="stdev-badge">1차 샘플 : 26/08/10 · 예상 입고 : 27/02/19</span>
           </div>
           <div id="stWellnessTimeline" class="stdev-timeline"></div>
-          <div class="stdev-note"><b>주차 기준</b> 두 타임라인 모두 월요일~일요일 · 작업지시서·의뢰 W1-W3는 6/5 작지서 전달 완료 기준으로 반영 · 웰니스 운동화 가상 개발·생산 리드타임 적용</div>
+          <div class="stdev-note"><b>주차 기준</b> 월요일~일요일 · 1차 작지 26/06/02 · 1차 샘플 도착 26/08/10 · 이후 수정/컨펌 및 생산 18주 리드타임 적용</div>
         </div>
       </div>
     </section>
@@ -649,6 +650,25 @@ function showUploadToast(msg, isErr) {
   setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateY(10px)'; }, 3500);
 }
 
+function hasScheduleValue(value) {
+  if (value == null) return false;
+  const normalized = String(value).trim().toLowerCase();
+  return normalized !== '' && normalized !== '-' && normalized !== 'null' && normalized !== 'undefined';
+}
+
+function getVisibleScheduleColumns(rows, columns, imageSources = []) {
+  return columns.filter(([key]) => {
+    if (key === 'style') return true;
+    if (key === 'sample_img') {
+      return rows.some((row) => {
+        const sheetRow = String(row._sheetRow || (Number(row.no || 0) + 3) || '');
+        return imageSources.some((source) => Array.isArray(source?.[sheetRow]) && source[sheetRow].length > 0);
+      });
+    }
+    return rows.some((row) => hasScheduleValue(row[key]));
+  });
+}
+
 function buildStSampleBoard() {
   const tableWrap = document.getElementById('stSampleTableWrap');
   if (!tableWrap) return;
@@ -676,18 +696,26 @@ function buildStSampleBoard() {
     return;
   }
 
+  const visibleCols = getVisibleScheduleColumns(stRows, cols, [stImagesByRow]);
+  const scheduleKeys = new Set([
+    'spec_1','arrive_1','spec_2','arrive_2','spec_3','arrive_3',
+    'spec_cfm','arrive_cfm','po','proto_prod'
+  ]);
+  const columnClass = (key) => key === 'sample_img'
+    ? 'img-col'
+    : (key.startsWith('remark') ? 'note-col' : (scheduleKeys.has(key) ? 'schedule-col' : ''));
+
   let html = '<table class="sample-table"><thead><tr>' +
-    cols.map((c,i) => {
+    visibleCols.map((c,i) => {
       const sticky = i===0 ? 'sticky' : '';
-      const extra = c[0] === 'sample_img' ? ' img-col'
-        : (c[0].startsWith('remark') ? ' note-col' : (i >= 9 ? ' schedule-col' : ''));
+      const extra = columnClass(c[0]);
       return `<th class="${sticky}${extra}">${c[1]}</th>`;
     }).join('') + '</tr></thead><tbody>';
 
   for (const r of stRows) {
     const isDrop = /^D$/i.test(String(r.drop||''));
     html += `<tr style="${isDrop ? 'opacity:0.5' : ''}">`;
-    cols.forEach((c, i) => {
+    visibleCols.forEach((c, i) => {
       const key = c[0];
       const clsBase = i===0 ? 'sticky' : '';
 
@@ -704,7 +732,7 @@ function buildStSampleBoard() {
 
       const val = r[key] || '';
       const ok = (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) ? 'ok' : '';
-      const cellCls = key.startsWith('remark') ? 'note-col' : (i >= 9 ? 'schedule-col' : '');
+      const cellCls = columnClass(key);
       html += `<td class="${clsBase} ${ok} ${cellCls}">${String(val).replace(/</g,'&lt;').replace(/>/g,'&gt;')}</td>`;
     });
     html += '</tr>';
@@ -1760,19 +1788,27 @@ function buildSampleBoard() {
     ['remark_prod','REMARK(생산)']
   ];
 
+  const visibleCols = getVisibleScheduleColumns(sampleRows, cols, [dvImagesByRow, sampleStatusImageBySheetRow]);
+  const scheduleKeys = new Set([
+    'launch','design_review','spec_1','sample_req_1','proto_1','target_1','arrive_1',
+    'report_sample','spec_2','target_2','arrive_2','spec_3','target_3','arrive_3',
+    'spec_cfm','arrive_cfm','po','proto_prod','gb_test','po_cn','inbound'
+  ]);
+  const columnClass = (key) => key === 'sample_img'
+    ? 'img-col'
+    : (key === 'proto_1' ? 'proto-col' : (key.startsWith('remark') ? 'note-col' : (scheduleKeys.has(key) ? 'schedule-col' : '')));
+
   let html = '<table class="sample-table"><thead><tr>' +
-    cols.map((c,i)=>{
+    visibleCols.map((c,i)=>{
       const sticky = i===0 ? 'sticky' : '';
-      const extra = c[0] === 'sample_img'
-        ? ' img-col'
-        : (c[0] === 'proto_1' ? ' proto-col' : (c[0].startsWith('remark') ? ' note-col' : (i >= 8 ? ' schedule-col' : '')));
+      const extra = columnClass(c[0]);
       return `<th class="${sticky}${extra}">${c[1]}</th>`;
     }).join('') +
     '</tr></thead><tbody>';
 
   for (const r of sampleRows) {
     html += '<tr>';
-    cols.forEach((c,i) => {
+    visibleCols.forEach((c,i) => {
       const key = c[0];
       const clsBase = i===0 ? 'sticky' : '';
 
@@ -1789,7 +1825,7 @@ function buildSampleBoard() {
 
       const val = r[key] || '';
       const ok = parseDate(val) ? 'ok' : '';
-      const cellCls = key === 'proto_1' ? 'proto-col' : (key.startsWith('remark') ? 'note-col' : (i >= 8 ? 'schedule-col' : ''));
+      const cellCls = columnClass(key);
       html += `<td class="${clsBase} ${ok} ${cellCls}">${esc(val)}</td>`;
     });
     html += '</tr>';
@@ -1998,15 +2034,10 @@ function buildStDevTimeline() {
   const wrap = document.getElementById('stDevTimeline');
   if (!wrap) return;
 
-  const planStart = new Date('2026-04-13T00:00:00');
-  const weekCount = 41;
+  const planStart = new Date('2026-04-27T00:00:00');
+  const weekCount = 42;
   const displayStartWeek = 1;
   const displayWeekCount = weekCount - (displayStartWeek - 1);
-  const monthSpans = [
-    { n: '4월', w: 4 }, { n: '5월', w: 4 }, { n: '6월', w: 5 }, { n: '7월', w: 4 },
-    { n: '8월', w: 5 }, { n: '9월', w: 4 }, { n: '10월', w: 4 }, { n: '11월', w: 4 }, { n: '12월', w: 4 },
-    { n: '27/1월', w: 3 }
-  ];
 
   const dayMs = 24 * 60 * 60 * 1000;
   const fmtRange = (startDate, endDate) => {
@@ -2016,6 +2047,22 @@ function buildStDevTimeline() {
     const ed = endDate.getDate();
     return sm === em ? `${sm}/${sd}-${ed}` : `${sm}/${sd}-${em}/${ed}`;
   };
+  const fmtMonth = (date) => date.getFullYear() === 2026
+    ? `${date.getMonth() + 1}월`
+    : `${String(date.getFullYear()).slice(2)}/${date.getMonth() + 1}월`;
+  const dateRangeFor = (startWeek, spanWeeks) => {
+    const start = new Date(planStart.getTime() + (startWeek - 1) * 7 * dayMs);
+    const end = new Date(start.getTime() + spanWeeks * 7 * dayMs - dayMs);
+    return fmtRange(start, end);
+  };
+  const monthSpans = [];
+  for (let i = 0; i < displayWeekCount; i++) {
+    const ws = new Date(planStart.getTime() + i * 7 * dayMs);
+    const monthName = fmtMonth(ws);
+    const current = monthSpans[monthSpans.length - 1];
+    if (current && current.n === monthName) current.w += 1;
+    else monthSpans.push({ n: monthName, w: 1 });
+  }
 
   const monthsHtml = monthSpans.map((m) => `<div class="stdev-month" style="--span:${m.w}">${m.n}</div>`).join('');
   const weeksHtml = Array.from({ length: displayWeekCount }).map((_, i) => {
@@ -2030,19 +2077,22 @@ function buildStDevTimeline() {
   }).join('');
 
   const tasks = [
-    { l: '작업지시서·의뢰', r: 'W1-W3', bars:[{s:1,w:3,c:'plan-b',t:'3주'}] },
-    { l: '개발 & 금형', r: 'W4-W13', bars:[{s:4,w:10,c:'plan-b',t:'10주'}] },
-    { l: '1차 샘플', r: 'W4-W13', bars:[{s:4,w:10,c:'critical',t:'10주'}] },
-    { l: '1차샘플 선정 미팅(ST,마케팅)', r: 'W14', bars:[{s:14,w:1,c:'memo',t:'선정 미팅'}] },
-    { l: '수정작지 의뢰', r: 'W14-W15', bars:[{s:14,w:2,c:'critical',t:'2주'}] },
-    { l: '컨펌샘플 제작', r: 'W16-W22', bars:[{s:16,w:7,c:'plan-a',t:'7주'}] },
-    { l: '컨펌샘플 미팅', r: 'W23', bars:[{s:23,w:1,c:'memo',t:'컨펌샘플 미팅'}] },
-    { l: '생산의뢰서', r: 'W24', bars:[{s:24,w:1,c:'plan-a',t:'의뢰서'}] },
-    { l: '발주', r: 'W24', bars:[{s:24,w:1,c:'critical',t:'발주'}] },
-    { l: '생산', r: 'W24-W41', bars:[{s:24,w:18,c:'plan-a',t:'18주'}] },
-    { l: '촬영용 샘플', r: 'W32', bars:[{s:32,w:1,c:'plan-b',t:'11월 2주'}] },
-    { l: '최종 입고', r: 'W41', bars:[{s:41,w:1,c:'plan-b',t:'입고'}] }
-  ];
+    { l: '1차 작지', s:1, w:1, c:'critical', t:'4/30 작지', r:'26/04/30' },
+    { l: '개발 & 금형', s:1, w:14, c:'plan-b', t:'약 13주', r:'4/30-7/30' },
+    { l: '1차 샘플 제작·도착', s:1, w:14, c:'critical', t:'7/30 도착', r:'4/30-7/30' },
+    { l: '1차샘플 선정 미팅(ST·마케팅)', s:15, w:1, c:'memo', t:'선정 미팅' },
+    { l: '수정작지 의뢰', s:15, w:2, c:'critical', t:'2주' },
+    { l: '컨펌샘플 제작', s:17, w:7, c:'plan-a', t:'7주' },
+    { l: '컨펌샘플 미팅', s:24, w:1, c:'memo', t:'컨펌 미팅' },
+    { l: '생산의뢰서·발주', s:25, w:1, c:'critical', t:'의뢰·발주' },
+    { l: '생산', s:25, w:18, c:'plan-a', t:'18주' },
+    { l: '촬영용 샘플', s:33, w:1, c:'plan-b', t:'촬영용' },
+    { l: '최종 입고', s:42, w:1, c:'plan-b', t:'2/12 입고', r:'27/02/12' }
+  ].map((t) => ({
+    ...t,
+    r: t.r || dateRangeFor(t.s, t.w),
+    bars:[{ s:t.s, w:t.w, c:t.c, t:t.t }]
+  }));
 
   const barHtml = (b) => {
     const left = ((b.s - displayStartWeek) / displayWeekCount) * 100;
@@ -2081,10 +2131,9 @@ function buildStWellnessTimeline() {
   const wrap = document.getElementById('stWellnessTimeline');
   if (!wrap) return;
 
-  // 상단 온코트 타임라인과 동일하게 월요일~일요일 단위로 표시한다.
-  // 6/5 작지서 전달일은 W3(6/1~6/7)에 포함된다.
-  const planStart = new Date('2026-05-18T00:00:00');
-  const weekCount = 41;
+  // 월요일~일요일 단위로, 캡처 샘플 일정의 6/2 작지와 8/10 1차 샘플 도착을 표시한다.
+  const planStart = new Date('2026-06-01T00:00:00');
+  const weekCount = 38;
   const displayStartWeek = 1;
   const displayWeekCount = weekCount - (displayStartWeek - 1);
   const dayMs = 24 * 60 * 60 * 1000;
@@ -2130,19 +2179,22 @@ function buildStWellnessTimeline() {
   }).join('');
 
   const tasks = [
-    { l: '작업지시서·의뢰', s:1, w:3, c:'plan-b', t:'6/5 전달' },
-    { l: '개발 & 금형', s:4, w:10, c:'plan-b', t:'10주' },
-    { l: '1차 샘플', s:4, w:10, c:'critical', t:'10주' },
-    { l: '1차샘플 선정 미팅(ST,마케팅)', s:14, w:1, c:'memo', t:'선정 미팅' },
-    { l: '수정작지 의뢰', s:14, w:2, c:'critical', t:'2주' },
-    { l: '컨펌샘플 제작', s:16, w:7, c:'plan-a', t:'7주' },
-    { l: '컨펌샘플 미팅', s:23, w:1, c:'memo', t:'컨펌샘플 미팅' },
-    { l: '생산의뢰서', s:24, w:1, c:'plan-a', t:'의뢰서' },
-    { l: '발주', s:24, w:1, c:'critical', t:'발주' },
-    { l: '생산', s:24, w:18, c:'plan-a', t:'18주' },
-    { l: '촬영용 샘플', s:32, w:1, c:'plan-b', t:'촬영용' },
-    { l: '최종 입고', s:41, w:1, c:'plan-b', t:'입고' }
-  ].map((t) => ({ ...t, r: dateRangeFor(t.s, t.w), bars:[{ s:t.s, w:t.w, c:t.c, t:t.t }] }));
+    { l: '1차 작지', s:1, w:1, c:'critical', t:'6/2 작지', r:'26/06/02' },
+    { l: '개발 & 금형', s:1, w:11, c:'plan-b', t:'약 10주', r:'6/2-8/10' },
+    { l: '1차 샘플 제작·도착', s:1, w:11, c:'critical', t:'8/10 도착', r:'6/2-8/10' },
+    { l: '1차샘플 선정 미팅(ST·마케팅)', s:11, w:1, c:'memo', t:'선정 미팅' },
+    { l: '수정작지 의뢰', s:11, w:2, c:'critical', t:'2주' },
+    { l: '컨펌샘플 제작', s:13, w:7, c:'plan-a', t:'7주' },
+    { l: '컨펌샘플 미팅', s:20, w:1, c:'memo', t:'컨펌 미팅' },
+    { l: '생산의뢰서·발주', s:21, w:1, c:'critical', t:'의뢰·발주' },
+    { l: '생산', s:21, w:18, c:'plan-a', t:'18주' },
+    { l: '촬영용 샘플', s:29, w:1, c:'plan-b', t:'촬영용' },
+    { l: '최종 입고', s:38, w:1, c:'plan-b', t:'2/19 입고', r:'27/02/19' }
+  ].map((t) => ({
+    ...t,
+    r: t.r || dateRangeFor(t.s, t.w),
+    bars:[{ s:t.s, w:t.w, c:t.c, t:t.t }]
+  }));
 
   const barHtml = (b) => {
     const left = ((b.s - displayStartWeek) / displayWeekCount) * 100;
