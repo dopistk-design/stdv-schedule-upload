@@ -1503,6 +1503,110 @@ LANA 2.0 (2sku: 블랙/초코/샌드 中 2택)
     memoEvents.push({ brand: 'DUVETICA', category: 'WINTER CUD', date: '2026-04-15', week: '26/4/13 - 26/4/19', title: '4/15 26FW 샘플 미팅', comment: dv415Recap });
     memoEvents.sort((a, b) => String(a.date||'').localeCompare(String(b.date||'')));
   }
+
+  // 8/10 타키니 슈즈 샘플 미팅 및 8/11 테니스화 보고 결과
+  const stShoesRecap0810 = `타키니 슈즈 샘플 미팅 리캡
+일시: 2026.08.10, 15:00–16:00
+마케팅·DV/ST: 김태영 이사, 이정진 차장, 조정은 과장, 송지수 과장
+슈즈팀: 장연식 부장, 김성우 과장, 남현주 수석디자이너, 이종훈 수석디자이너
+ST 기획팀: 손혜진 과장
+
+1. 테니스화
+- 302, 702 중 한 스타일만 선택해 진행
+- 선택 시 302 스타일에 집중하는 방향
+- 갑피 메쉬를 On Running과 같은 통기성 원단으로 변경
+- 302 힐 사출 유광 부분을 더욱 고급스럽게 개선
+- 302 베라 공법 및 발목 쓸림 여부 확인
+- 컬러는 현재 확정하지 않고 재샘플 확인 후 결정
+- 목표 입고: 2월 중순
+
+2. 로우 스니커즈
+- 퍼져 보이는 전체 실루엣 점검
+- 사이드 로고 크기 10% 축소
+- 로고 자수 볼륨을 낮추고 로고 면적과 너비도 소폭 축소
+- 힐 로고는 갑피 컬러에 자연스럽게 묻히도록 조정
+- 베라 로고는 심벌 없이 텍스트만 적용
+- 메쉬는 자수 부분에 사용된 메쉬 옵션으로 결정
+- 옐로: 메쉬와 로고 컬러를 스플리트 컬러에 맞춰 조정
+- 베이지: 메쉬 컬러를 스플리트 컬러에 맞춰 조정
+- 블랙: 힐 로고와 라벨 로고를 톤온톤으로 조정
+
+3. 메리제인
+- 발등 로고는 나염 방식으로 적용
+- 메쉬 조직을 더욱 촘촘하게 변경
+- 힐 로고 크기 축소
+- 화이트 컬러의 힐 로고는 은은하게 표현
+- 컬러: 블랙, 화이트, 초코
+- 목표 입고: 1월 초`;
+  const stTennisReport0811 = `8/11 테니스화 샘플 보고 결과
+테니스화 재고 이슈로 진행 중단.
+회장님 지시.`;
+
+  const stOnCourtRow0810 = brandRows.find((r) =>
+    /serigo|sergio/i.test(String(r.brand || '')) &&
+    /온코트\s*운동화/.test(String(r.category || ''))
+  );
+  const stWellnessRow0810 = brandRows.find((r) =>
+    /serigo|sergio/i.test(String(r.brand || '')) &&
+    /웰니스\s*운동화/.test(String(r.category || ''))
+  );
+  upsertEvent(stOnCourtRow0810, '26/8/10 - 26/8/16', '2026-08-10', '8/10 타키니 슈즈 샘플 미팅', stShoesRecap0810);
+  upsertEvent(stWellnessRow0810, '26/8/10 - 26/8/16', '2026-08-10', '8/10 타키니 슈즈 샘플 미팅', stShoesRecap0810);
+  upsertEvent(stOnCourtRow0810, '26/8/10 - 26/8/16', '2026-08-11', '8/11 테니스화 샘플보고완료', stTennisReport0811);
+
+  const upsertCalendarEvent = (payload) => {
+    const idx = calendarEvents.findIndex((e) =>
+      /serigo|sergio/i.test(String(e.brand || '')) &&
+      String(e.date || '') === payload.date &&
+      String(e.title || '') === payload.title
+    );
+    if (idx >= 0) calendarEvents[idx] = { ...calendarEvents[idx], ...payload };
+    else calendarEvents.push(payload);
+  };
+  upsertCalendarEvent({
+    date: '2026-08-10',
+    brand: 'Sergio Tacchini',
+    category: 'ST 슈즈',
+    title: '8/10 타키니 슈즈 샘플 미팅',
+    detail: stShoesRecap0810,
+    source: 'MASTER'
+  });
+  upsertCalendarEvent({
+    date: '2026-08-11',
+    brand: 'Sergio Tacchini',
+    category: '온코트 운동화',
+    title: '8/11 테니스화 샘플보고완료',
+    detail: stTennisReport0811,
+    source: 'MASTER'
+  });
+  calendarEvents.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+
+  const upsertMemoEvent = (payload) => {
+    const idx = memoEvents.findIndex((m) =>
+      /serigo|sergio/i.test(String(m.brand || '')) &&
+      String(m.date || '') === payload.date &&
+      String(m.title || '') === payload.title
+    );
+    if (idx >= 0) memoEvents[idx] = { ...memoEvents[idx], ...payload };
+    else memoEvents.push(payload);
+  };
+  upsertMemoEvent({
+    brand: 'Sergio Tacchini',
+    category: 'ST 슈즈',
+    date: '2026-08-10',
+    week: '26/8/10 - 26/8/16',
+    title: '8/10 타키니 슈즈 샘플 미팅',
+    comment: stShoesRecap0810
+  });
+  upsertMemoEvent({
+    brand: 'Sergio Tacchini',
+    category: '온코트 운동화',
+    date: '2026-08-11',
+    week: '26/8/10 - 26/8/16',
+    title: '8/11 테니스화 샘플보고완료',
+    comment: stTennisReport0811
+  });
+  memoEvents.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
 }
 applyManualScheduleUpdates();
 
